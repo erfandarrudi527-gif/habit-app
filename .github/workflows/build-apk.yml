@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +29,13 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - uses: actions/upload-artifact@v4
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk habit-yar.apk
+
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
         with:
-          name: habit-app-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: v1.0
+          name: عادت‌یار v1.0
+          files: habit-yar.apk
+          make_latest: true
