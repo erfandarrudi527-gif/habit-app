@@ -35,7 +35,7 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0
+          tag_name: barg-v1.0
           name: Barg v1.0
           files: barg.apk
           make_latest: true
