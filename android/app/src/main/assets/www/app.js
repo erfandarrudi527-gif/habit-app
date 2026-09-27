@@ -142,23 +142,195 @@ const edits = {};   // bare form -> harakat string edited by the learner
 function setDark(on) {
   state.dark = on;
   document.body.classList.toggle('dark', on);
+  const cl = document.getElementById('chkLight'), cd = document.getElementById('chkDark');
+  if (cl) { cl.classList.toggle('hidden', on); cd.classList.toggle('hidden', !on); }
 }
-document.getElementById('themeHome').addEventListener('click', () => setDark(!state.dark));
+
+// ── home hamburger menu: theme + level box ──
+const hambBtn = document.getElementById('hambBtn');
+const hambPop = document.getElementById('hambPop');
+hambBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  hambPop.classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+  if (!hambPop.classList.contains('hidden') && !hambPop.contains(e.target)) hambPop.classList.add('hidden');
+});
+hambPop.querySelectorAll('[data-theme]').forEach(b =>
+  b.addEventListener('click', () => setDark(b.dataset.theme === 'dark')));
+const lvBox = document.getElementById('lvBox');
+document.getElementById('hambLevelRow').addEventListener('click', e => {
+  e.stopPropagation();
+  lvBox.classList.toggle('hidden');
+});
+lvBox.querySelectorAll('.lv-opt').forEach(b => b.addEventListener('click', () => {
+  setLevel(b.dataset.level);
+  lvBox.querySelectorAll('.lv-opt').forEach(o => o.classList.toggle('sel', o === b));
+  document.getElementById('hambLevelVal').textContent = b.dataset.level;
+}));
+
+// ── server connection (API key) ──────────────────────────────────────────
+const apiBox = document.getElementById('apiBox');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const apiHint = document.getElementById('apiHint');
+document.getElementById('hambApiRow').addEventListener('click', e => {
+  e.stopPropagation();
+  apiBox.classList.toggle('hidden');
+});
+function refreshApiBadge() {
+  const on = BARGE_API.ready();
+  document.getElementById('hambApiVal').textContent = on ? 'on' : 'off';
+  if (on) apiKeyInput.value = BARGE_API.getKey();
+}
+document.getElementById('apiKeySave').addEventListener('click', async () => {
+  const k = BARGE_API.setKey(apiKeyInput.value);
+  if (!k) { apiHint.textContent = 'Key cleared — running on offline data.'; refreshApiBadge(); return; }
+  apiHint.textContent = 'Testing…';
+  const ok = await BARGE_API.ping();
+  try {
+    await BARGE_API.listStories({ level: state.level });
+    apiHint.textContent = '✓ Connected — loading stories from the server.';
+    refreshApiBadge();
+    loadStories();
+  } catch (err) {
+    apiHint.textContent = `✗ Server said ${err.message} — check the key.`;
+  }
+});
+refreshApiBadge();
 
 // ─── navigation ───────────────────────────────────────────────────────────
 function nav(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
   if (id === 'scr-home') {
-    document.getElementById('homeStat').textContent = `Level ${state.level} · ${state.saved} words saved`;
+    document.getElementById('homeStat').textContent = `Level ${state.level} · ${savedWords().length} words saved`;
+    document.getElementById('reviewDue').textContent = `${savedWords().length} due →`;
   }
 }
 document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => nav(b.dataset.nav)));
+
+// ── level onboarding shows ONCE (first launch only) ──
+const onboarded = () => localStorage.getItem('barg-onboarded') === '1';
+document.getElementById('getStarted').addEventListener('click', () =>
+  nav(onboarded() ? 'scr-home' : 'scr-level'));
+document.getElementById('levelGo').addEventListener('click', () => {
+  localStorage.setItem('barg-onboarded', '1');
+  nav('scr-home');
+});
+
+// ── back-press handling (native WebView calls bargBack()) ──
+function showExitDialog() { document.getElementById('exitBackdrop').classList.remove('hidden'); }
+function hideExitDialog() { document.getElementById('exitBackdrop').classList.add('hidden'); }
+document.getElementById('exitNo').addEventListener('click', hideExitDialog);
+document.getElementById('exitYes').addEventListener('click', () => { location.href = 'barg://exit'; });
+function bargBack() {
+  const active = document.querySelector('.screen.active');
+  if (!active) return;
+  if (!document.getElementById('exitBackdrop').classList.contains('hidden')) { hideExitDialog(); return; }
+  if (popup.classList.contains('show')) { closePopup(); return; }
+  if (active.id === 'scr-reading') { nav('scr-home'); return; }
+  if (active.id === 'scr-review') { nav('scr-home'); return; }
+  if (active.id === 'scr-level') { nav('scr-welcome'); return; }
+  if (active.id === 'scr-home') { showExitDialog(); return; }
+  location.href = 'barg://exit';   // welcome: leave straight away
+}
+window.bargBack = bargBack;
+
+// ─── saved words (persistent) ─────────────────────────────────────────────
+function savedWords() {
+  try { return JSON.parse(localStorage.getItem('barg-words') || '[]'); }
+  catch (e) { return []; }
+}
+function saveWord(item) {
+  const list = savedWords();
+  list.unshift(item);
+  localStorage.setItem('barg-words', JSON.stringify(list));
+}
+const savedHas = w => savedWords().some(x => x.w === w);
+function updateSaveCount() {
+  const n = savedWords().length;
+  document.getElementById('homeStat').textContent = `Level ${state.level} · ${n} words saved`;
+  document.getElementById('reviewDue').textContent = `${n} due →`;
+  document.getElementById('reviewCount').textContent = n;
+}
+
+// ─── review: Instagram-style card deck (swipe up for next card) ───────────
+function renderDeck() {
+  const words = savedWords();
+  const deck = document.getElementById('cardDeck');
+  document.getElementById('reviewCount').textContent = words.length;
+  if (!words.length) {
+    deck.innerHTML = `<div class="deck-empty">
+      <p>No saved words yet.</p>
+      <p>Tap any word while reading and press <b>Save to Words</b>.</p>
+    </div>`;
+    document.getElementById('deckHint').style.visibility = 'hidden';
+    return;
+  }
+  document.getElementById('deckHint').style.visibility = 'visible';
+  // show the top 3 so the next card peeks behind, like Stories
+  deck.innerHTML = words.slice(0, 3).map((x, i) => `
+    <div class="wcard" data-i="${i}" style="z-index:${10 - i};
+         transform:translateY(${i * 14}px) scale(${1 - i * 0.04});
+         opacity:${i === 0 ? 1 : 0.85}">
+      <div class="wcard-top">
+        <span class="wcard-idx">${words.length - i} / ${words.length}</span>
+        <button class="wcard-del" data-del="${i}" title="Remove from saved">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4M6.5 7v4M9.5 7v4"/></svg>
+        </button>
+      </div>
+      <p class="wcard-word fa">${x.v || x.w}</p>
+      <p class="wcard-tr">${x.tr}</p>
+      <p class="wcard-gloss">${x.gl}</p>
+      <p class="wcard-role">${ROLE[x.w] || ''}</p>
+    </div>`).join('');
+  bindSwipe();
+  deck.querySelectorAll('.wcard-del').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const i = +btn.dataset.del;
+    const card = btn.closest('.wcard');
+    card.classList.add('drop');                 // fly off to the side
+    setTimeout(() => {
+      const list = savedWords();
+      list.splice(i, 1);                        // deck card i = saved list index i
+      localStorage.setItem('barg-words', JSON.stringify(list));
+      renderDeck(); updateSaveCount();
+    }, 340);
+  }));
+}
+function swipeNext() {
+  const top = document.querySelector('#cardDeck .wcard[data-i="0"]');
+  if (!top) return;
+  top.classList.add('fly');
+  setTimeout(() => {
+    const list = savedWords();
+    if (list.length > 1) { list.push(list.shift()); }   // rotate — nothing is deleted
+    localStorage.setItem('barg-words', JSON.stringify(list));
+    renderDeck();
+  }, 320);
+}
+function bindSwipe() {
+  const deck = document.getElementById('cardDeck');
+  let y0 = null;
+  const down = y => { y0 = y; };
+  const up = y => {
+    if (y0 !== null && y0 - y > 60) swipeNext();   // swipe up
+    y0 = null;
+  };
+  deck.onmousedown = e => down(e.clientY);
+  deck.onmouseup = e => up(e.clientY);
+  deck.ontouchstart = e => down(e.touches[0].clientY);
+  deck.ontouchend = e => up(e.changedTouches[0].clientY);
+  deck.onclick = e => { if (e.target.closest('.wcard[data-i="0"]')) swipeNext(); };
+}
+document.getElementById('reviewOpen').addEventListener('click', () => {
+  renderDeck(); nav('scr-review');
+});
 
 // ─── level (shared by picker + reading stepper) ───────────────────────────
 function setLevel(l, opts = {}) {
   state.level = l;
   document.getElementById('lvNow').textContent = l;
-  document.getElementById('homeStat').textContent = `Level ${l} · ${state.saved} words saved`;
+  document.getElementById('homeStat').textContent = `Level ${l} · ${savedWords().length} words saved`;
   // sync the onboarding picker
   document.querySelectorAll('.level-card').forEach(c => {
     const on = c.dataset.level === l;
@@ -175,9 +347,7 @@ function setLevel(l, opts = {}) {
   applyTypeScale();
 }
 function applyTypeScale() {
-  // font size is fixed (18px from CSS); only playback speed affects line-height
-  bodyEl.style.lineHeight = (41.8 / state.speed).toFixed(1) + 'px';
-  // pulse the stepper code so the change is visible
+  // playback spacing is fixed; the ▶ button is inert until the audio feature lands
   const now = document.getElementById('lvNow');
   now.classList.remove('bump'); void now.offsetWidth; now.classList.add('bump');
 }
@@ -198,18 +368,52 @@ document.querySelectorAll('.level-card').forEach(card => {
 
 // ─── home story cards ─────────────────────────────────────────────────────
 const SNIPPET = stripVowels(STORY.paragraphs[0].map(s => s.fa).join(' '));
+
+// offline fallback list (used when the server is unreachable / no key yet)
 const STORIES = [
   { t: 'داستانِ موشِ آهن‌خور', img: 'assets/mouse.png',  v: 'داستان موش آهن‌خور' },
   { t: 'گربه روزه دار',        img: 'assets/cat.png',    v: 'گربه روزه‌دار' },
   { t: 'روباه حیله گر',        img: 'assets/fox.png',    v: 'روباه حیله‌گر' },
   { t: 'شکارچی باهوش',         img: 'assets/hunter.png', v: 'شکارچی باهوش' },
 ];
-document.getElementById('storyList').innerHTML = STORIES.map((s, i) => `
-  <button class="story-card" data-story="${i}">
-    <span class="txt"><h3>${s.t}</h3><p>${SNIPPET} ...</p></span>
-    <img class="story-thumb" src="${s.img}" alt="${s.t}" loading="lazy">
-  </button>`).join('');
-document.querySelectorAll('.story-card').forEach(c => c.addEventListener('click', () => openReading(+c.dataset.story)));
+
+// story list currently on screen (server list, or the offline fallback)
+let storiesNow = STORIES;
+
+const THUMBS = ['assets/mouse.png', 'assets/cat.png', 'assets/fox.png', 'assets/hunter.png'];
+function renderStoryList(list) {
+  storiesNow = list && list.length ? list : STORIES;
+  document.getElementById('storyList').innerHTML = storiesNow.map((s, i) => `
+    <button class="story-card" data-story="${i}">
+      <span class="txt"><h3>${s.t}</h3><p>${s.snippet || SNIPPET} ...</p></span>
+      <img class="story-thumb" src="${s.img || THUMBS[i % THUMBS.length]}" alt="${s.t}" loading="lazy">
+    </button>`).join('');
+  document.querySelectorAll('.story-card').forEach(c =>
+    c.addEventListener('click', () => openReading(+c.dataset.story)));
+}
+
+// ── pull the story list from the API; keep the offline list on failure ──
+async function loadStories() {
+  if (!BARGE_API.ready()) { renderStoryList(STORIES); return; }
+  try {
+    const rows = await BARGE_API.listStories({ level: state.level });
+    renderStoryList(rows.map((r, i) => ({
+      id: r.id,
+      t: r.titleFa,
+      v: stripVowels(r.titleFa || r.titleEn || ''),
+      tEn: r.titleEn,
+      level: r.level,
+      wordCount: r.wordCount,
+      snippet: r.titleEn ? `(${r.titleEn})` : '',
+      img: THUMBS[i % THUMBS.length],
+    })));
+  } catch (e) {
+    console.warn('stories: falling back to offline list —', e.message);
+    renderStoryList(STORIES);
+  }
+}
+renderStoryList(STORIES);
+loadStories();
 
 // ─── reading screen ───────────────────────────────────────────────────────
 const bodyEl = document.getElementById('storyBody');
@@ -238,68 +442,100 @@ function renderBody() {
   bindWords();
 }
 function openReading(idx = 0) {
-  const s = STORIES[idx] || STORIES[0];
-  titleEl.textContent = s.v;
-  titleEnEl.textContent = STORY.titleEn;
-  const img = document.getElementById('storyHero');
-  img.src = s.img; img.alt = s.t;
+  const s = storiesNow[idx] || storiesNow[0] || STORIES[0];
+  titleEl.textContent = s.v || s.t;
+  titleEnEl.textContent = s.tEn || STORY.titleEn;
+  // show the bundled story immediately, then swap in the server text
   renderBody();
   nav('scr-reading');
+  if (s.id && BARGE_API.ready()) loadReading(s.id);
+}
+
+// ── server version of the reading screen ────────────────────────────────
+// StoryTextDto: { titleFa, titleEn, levelFa, levelEn,
+//                  lines: [ { order, translationEn,
+//                             words: [ { wordId, text, textWithHarakat,
+//                                        ezafeSuffix, leadingPunctuation,
+//                                        trailingPunctuation, partOfSpeech,
+//                                        meaning } ] } ] }
+let storyWords = {};   // bareText -> WordDto-ish info for the tap popup
+
+function apiWordToRaw(w) {
+  return `${w.leadingPunctuation || ''}${w.text || ''}${w.ezafeSuffix || ''}${w.trailingPunctuation || ''}`;
+}
+
+function renderServerBody(dto) {
+  bodyEl.innerHTML = (dto.lines || []).map(line => {
+    const parts = (line.words || []).map(w => {
+      const raw = apiWordToRaw(w);
+      const shown = state.vowels ? (w.textWithHarakat || w.text) : w.text;
+      // remember this word's server-side grammar for the popup
+      const bareKey = bare(shown || raw);
+      storyWords[bareKey] = {
+        meaning: w.meaning,
+        partOfSpeech: w.partOfSpeech,
+        translit: w.textWithHarakat ? stripVowels(w.text) : '',
+        id: w.wordId,
+      };
+      const lead = w.leadingPunctuation || '';
+      const tail = `${w.ezafeSuffix || ''}${w.trailingPunctuation || ''}`;
+      return `${lead}<span class="word" data-w="${shown}">${shown}</span>${tail}`;
+    }).join(' ');
+    const en = line.translationEn
+      ? `<span class="en-line">${line.translationEn}</span>` : '';
+    return `<p class="pair">${parts}${en}</p>`;
+  }).join('');
+  bindWords();
+}
+
+async function loadReading(id) {
+  try {
+    const dto = await BARGE_API.getStoryText(id);
+    titleEl.textContent = dto.titleFa || titleEl.textContent;
+    titleEnEl.textContent = dto.titleEn || titleEnEl.textContent;
+    renderServerBody(dto);
+  } catch (e) {
+    console.warn('reading: keeping bundled story —', e.message);
+  }
 }
 
 // word tap → popup
 const popup = document.getElementById('wordPopup');
 const backdrop = document.getElementById('popupBackdrop');
 let hlEl = null;
+let popupBare = '', popupRaw = '';
 
-// ── harakat editor state ──
-const MARKS = ['\u064E','\u064F','\u0650','\u0652'];           // fatha zamma kasra sukun
-let popupChars = [];                                           // [{base, marks:[]}]
-let popupSel = null;                                           // selected letter index
-let popupWordEl = null;                                        // the .word span in the body
-
-function parseWord(raw) {
-  const chars = [];
-  for (const ch of raw) {
-    if (MARKS.includes(ch) || '\u064B\u064C\u064D'.includes(ch)) {
-      if (chars.length) chars[chars.length - 1].marks.push(ch);
-    } else chars.push({ base: ch, marks: [] });
-  }
-  return chars;
-}
-const rebuild = chars => chars.map(c => c.base + c.marks.join('')).join('');
-
-function renderPopupWord() {
-  const el = document.getElementById('popupWord');
-  el.innerHTML = '';
-  popupChars.forEach((c, i) => {
-    const s = document.createElement('span');
-    s.className = 'pchar' + (i === popupSel ? ' sel' : '');
-    s.textContent = c.base + c.marks.join('');
-    s.addEventListener('click', () => { popupSel = i; renderPopupWord(); });
-    el.appendChild(s);
-  });
-}
-function commitPopupWord() {
-  const str = rebuild(popupChars);
-  const b = bare(str) || bare(popupWordEl.dataset.w);
-  edits[b] = str;
-  if (popupWordEl) { popupWordEl.textContent = str; popupWordEl.dataset.w = str; }
-  document.getElementById('popupTranslit').textContent =
-    `${b} | ${(LEXICON[b] || ['—','no entry yet'])[0]}`;
-}
-document.querySelectorAll('#popupMarks .mark').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (!popupChars.length) return;
-    if (popupSel === null) popupSel = popupChars.length - 1;   // default: last letter
-    const c = popupChars[popupSel];
-    const m = btn.dataset.mark;
-    if (m === 'clear') c.marks = [];
-    else if (c.marks.includes(m)) c.marks = c.marks.filter(x => x !== m);
-    else { c.marks = c.marks.filter(x => !MARKS.includes(x)); c.marks.push(m); }
-    renderPopupWord(); commitPopupWord();
-  });
-});
+// ── grammatical role of a word in its sentence ──
+const ROLE = {
+  'قدیم':'صفت (adjective) — describes زمان','زمان':'اسم (noun)','مرد':'اسم (noun)','تاجر':'اسم (noun)',
+  'مقدار':'اسم (noun)','زیادی':'صفت (adjective) — modifies مقدار','آهن':'اسم (noun)',
+  'خواست':'فعل (verb) — ماضی ساده','سفر':'اسم (noun)','دور':'قید (adverb)','آشنا':'صفت (adjective)',
+  'گفت':'فعل (verb)','لطفاً':'قید (adverb)','پیش':'حرف اضافه (preposition)','تو':'ضمیر (pronoun)',
+  'بماند':'فعل (verb) — مصدر + ب','بعد':'قید (adverb)','رفت':'فعل (verb)','مدتی':'اسم (noun)',
+  'برگشت':'فعل (verb)','خانه':'اسم (noun)','امانت‌دار':'اسم (noun)','خود':'ضمیر (pronoun)',
+  'بگیرد':'فعل (verb)','اما':'حرف ربط (conjunction)','خائن':'صفت (adjective)','دوست':'اسم (noun)',
+  'داشت':'فعل (verb)','آن‌ها':'ضمیر (pronoun)','برای':'حرف اضافه (preposition)','می‌خواست':'فعل (verb) — استمراری',
+  'ای':'حرف ندا (interjection)','موش':'اسم (noun)','آمد':'فعل (verb)','تمام':'صفت (adjective)',
+  'سخت':'صفت (adjective)','خورد':'فعل (verb)','مردی':'اسم (noun)','باهوش':'صفت (adjective)',
+  'فهمید':'فعل (verb)','حرف':'اسم (noun)','دروغ':'اسم (noun)','است':'فعل (verb) — اسنادی',
+  'خواهد':'فعل کمکی (auxiliary)','اموال':'اسم (noun)','بدزدد':'فعل (verb)','چیزی':'ضمیر (pronoun)',
+  'نگفت':'فعل (verb)','آرامش':'اسم (noun)','جواب':'اسم (noun)','داد':'فعل (verb)','بله':'حرف (particle)',
+  'راست':'اسم (noun)','می‌گویی':'فعل (verb)','دندان‌های':'اسم (noun)','تیزی':'صفت (adjective)',
+  'دارد':'فعل (verb)','می‌تواند':'فعل (verb)','هم':'قید (adverb)','بخورد':'فعل (verb)',
+  'تعجب':'اسم (noun)','خوش‌حال':'صفت (adjective)','شد':'فعل (verb)','فردا':'قید (adverb)',
+  'ناهار':'اسم (noun)','من':'ضمیر (pronoun)','بیا':'فعل (verb)','روز':'اسم (noun)',
+  'وقتی':'حرف ربط (conjunction)','خیلی':'قید (adverb)','ناراحت':'صفت (adjective)','فریاد':'اسم (noun)',
+  'زد':'فعل (verb)','پسر':'اسم (noun)','کوچک':'صفت (adjective)','گم':'اسم (noun)','شده':'فعل (verb)',
+  'پیدا':'اسم (noun)','نمی‌کنم':'فعل (verb)','امروز':'قید (adverb)','پرنده':'اسم (noun)',
+  'بزرگ':'صفت (adjective)','شاهین':'اسم (noun)','دیدم':'فعل (verb)','آسمان':'اسم (noun)',
+  'پسرت':'اسم + ضمیر (your son)','چنگال‌هایش':'اسم (noun)','گرفت':'فعل (verb)',
+  'با':'حرف اضافه (preposition)','برد':'فعل (verb)','عصبانی':'صفت (adjective)','چطور':'قید (adverb)',
+  'پسری':'اسم (noun)','ببرد':'فعل (verb)','غیرممکن':'صفت (adjective)','لبخند':'اسم (noun)',
+  'چرا':'قید (adverb)','می‌کنی':'فعل (verb)','در':'حرف اضافه (preposition)','شهری':'اسم (noun)',
+  'که':'حرف ربط (conjunction)','بتواند':'فعل (verb)','قبول':'اسم (noun)','کرد':'فعل (verb)',
+  'پدرش':'اسم + ضمیر (his father)','پس':'قید (adverb)','اشتباه':'اسم (noun)','سالم':'صفت (adjective)',
+  'هستند':'فعل (verb)','مکر':'اسم (noun)','فهمیده':'فعل (verb)',
+};
 
 function bindWords() {
   bodyEl.querySelectorAll('.word').forEach(w => w.addEventListener('click', () => {
@@ -308,17 +544,36 @@ function bindWords() {
     const [tr = '—', gl = 'no entry yet'] = LEXICON[b] || [];
     if (hlEl) hlEl.classList.remove('hl');
     hlEl = w; w.classList.add('hl');
-    popupWordEl = w;
-    popupChars = parseWord(raw);
-    popupSel = null;
-    renderPopupWord();
+    popupBare = b; popupRaw = raw;
+    document.getElementById('popupWord').textContent = raw;
     document.getElementById('popupTranslit').textContent = `${b} | ${tr}`;
     document.getElementById('popupGloss').textContent = gl;
+    document.getElementById('popupGrammar').classList.add('hidden');
     const save = document.getElementById('popupSave');
-    save.textContent = 'Save to Words'; save.classList.remove('saved');
+    const has = savedHas(b);
+    save.textContent = has ? 'Saved ✓' : 'Save to Words';
+    save.classList.toggle('saved', has);
     popup.classList.add('show'); backdrop.classList.remove('hidden');
   }));
 }
+document.getElementById('popupGrammarBtn').addEventListener('click', e => {
+  const gr = document.getElementById('popupGrammar');
+  const btn = e.currentTarget;
+  if (!gr.classList.contains('hidden')) {            // toggle off
+    gr.classList.add('hidden');
+    btn.textContent = 'Grammar';
+    return;
+  }
+  const b = popupBare, raw = popupRaw;
+  const role = ROLE[b] || 'کلمه‌ای در این جمله — a word used in this sentence';
+  const [tr = ''] = LEXICON[b] || [];
+  gr.innerHTML =
+    `<b class="fa">${stripVowels(raw)}</b> — نقش در جمله:<br>` +
+    `<span class="g-role">${role}</span>` +
+    (tr ? `<br><span class="g-tr">تلفظ: ${tr}</span>` : '');
+  gr.classList.remove('hidden');
+  btn.textContent = 'Hide';                          // toggle on
+});
 function closePopup() {
   popup.classList.remove('show'); backdrop.classList.add('hidden');
   if (hlEl) { hlEl.classList.remove('hl'); hlEl = null; }
@@ -326,9 +581,18 @@ function closePopup() {
 document.getElementById('popupClose').addEventListener('click', closePopup);
 backdrop.addEventListener('click', closePopup);
 document.getElementById('popupSave').addEventListener('click', e => {
-  state.saved += 1;
-  document.getElementById('homeStat').textContent = `Level ${state.level} · ${state.saved} words saved`;
-  e.target.textContent = 'Saved ✓'; e.target.classList.add('saved');
+  const b = popupBare, raw = popupRaw;
+  const [tr = '—', gl = 'no entry yet'] = LEXICON[b] || [];
+  const btn = e.target;
+  if (savedHas(b)) {                                 // already saved → remove it
+    const list = savedWords().filter(x => x.w !== b);
+    localStorage.setItem('barg-words', JSON.stringify(list));
+    btn.textContent = 'Save to Words'; btn.classList.remove('saved');
+  } else {                                           // save it
+    saveWord({ w: b, v: raw, tr, gl, ts: Date.now() });
+    btn.textContent = 'Saved ✓'; btn.classList.add('saved');
+  }
+  updateSaveCount();
 });
 document.getElementById('popupAudio').addEventListener('click', () => {
   const w = document.getElementById('popupWord').textContent;
@@ -353,12 +617,11 @@ btnT.addEventListener('click', () => {
   bodyEl.classList.toggle('translating', state.translate);
   titleEnEl.classList.toggle('show', state.translate);
 });
-const SPEEDS = [1.0, 0.75, 1.5];
-btnS.addEventListener('click', () => {
-  state.speed = SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length];
-  document.getElementById('speedLabel').textContent = state.speed.toFixed(1) + '×';
-  applyTypeScale();
-});
+// ▶ play/speed button — fully inert for now (does nothing at all)
+btnS.onclick = null;
+btnS.style.pointerEvents = 'none';
+btnS.classList.add('inert-btn');
+btnS.title = 'Coming soon';
 
 // ── three-dot options menu (mirrors the control bar) ──
 const menuBtn = document.getElementById('menuBtn');
@@ -368,8 +631,6 @@ function syncMenu() {
   t.textContent = state.translate ? 'on' : 'off'; t.classList.toggle('on', state.translate);
   v.textContent = state.vowels ? 'on' : 'off'; v.classList.toggle('on', state.vowels);
   document.getElementById('miSpeed').textContent = state.speed.toFixed(1) + '×';
-  const th = document.getElementById('miTheme');
-  th.textContent = state.dark ? 'on' : 'off'; th.classList.toggle('on', state.dark);
 }
 menuBtn.addEventListener('click', e => {
   e.stopPropagation();
@@ -384,7 +645,6 @@ menuPop.querySelectorAll('.menu-item').forEach(item => item.addEventListener('cl
     case 'translate': btnT.click(); break;
     case 'vowels':    btnV.click(); break;
     case 'speed':     btnS.click(); break;
-    case 'theme':     setDark(!state.dark); break;
     case 'home':      nav('scr-home'); break;
   }
   syncMenu();
@@ -397,3 +657,7 @@ scroller.addEventListener('scroll', () => {
   document.getElementById('progressFill').style.width =
     (max > 0 ? (scroller.scrollTop / max) * 100 : 0).toFixed(1) + '%';
 });
+
+// ── boot ──
+setDark(state.dark);
+if (onboarded()) nav('scr-home');   // welcome screen shows once, ever

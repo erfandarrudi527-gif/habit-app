@@ -34,7 +34,7 @@
 
       <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
 
-      <button class="btn-primary" data-nav="scr-level">Get started</button>
+      <button class="btn-primary" id="getStarted" data-nav="scr-level">Get started</button>
     </div>
   </section>
 
@@ -53,7 +53,7 @@
       </div>
 
       <button class="btn-dashed">Not sure? Take a quick test</button>
-      <button class="btn-primary" data-nav="scr-home">Continue</button>
+      <button class="btn-primary" id="levelGo">Continue</button>
     </div>
   </section>
 
@@ -62,12 +62,43 @@
     <div class="screen-pad">
       <header class="home-top">
         <span class="home-stat" id="homeStat">Level B1 · 62 words saved</span>
-        <div class="home-top-right">
-          <button class="theme-toggle" id="themeHome" title="Dark mode">
-            <svg class="ic-moon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10.5A6.5 6.5 0 017.5 3 6.5 6.5 0 1015 10.5z"/></svg>
-            <svg class="ic-sun" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4"/></svg>
+        <div class="hamb-wrap">
+          <button class="hamb-btn" id="hambBtn" title="Menu" aria-haspopup="true">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
           </button>
-          <span class="avatar">S</span>
+          <div class="hamb-pop hidden" id="hambPop">
+            <p class="hamb-sec">Appearance</p>
+            <button class="hamb-item" data-theme="light">
+              <svg class="hi-ic" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4"/></svg>
+              <span>Light mode</span><i class="hi-check" id="chkLight">✓</i>
+            </button>
+            <button class="hamb-item" data-theme="dark">
+              <svg class="hi-ic" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10.5A6.5 6.5 0 017.5 3 6.5 6.5 0 1015 10.5z"/></svg>
+              <span>Dark mode</span><i class="hi-check" id="chkDark">✓</i>
+            </button>
+            <hr class="hamb-sep">
+            <button class="hamb-item" id="hambApiRow">
+              <svg class="hi-ic" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="6" r="3"/><path d="M9 9v6M6 15h6"/></svg>
+              <span>Server connection</span><i class="hi-val" id="hambApiVal">off</i>
+            </button>
+            <div class="lv-box hidden" id="apiBox">
+              <input class="api-input" id="apiKeyInput" type="text" placeholder="X-Api-Key…" autocomplete="off" spellcheck="false">
+              <button class="lv-opt api-save" id="apiKeySave">Save &amp; connect</button>
+              <p class="api-hint" id="apiHint">Paste the key from Swagger → Authorize.</p>
+            </div>
+            <hr class="hamb-sep">
+            <button class="hamb-item" id="hambLevelRow">
+              <svg class="hi-ic" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 14h3.5M7.25 10h3.5M12.5 6H16M2 4.5h3M12.5 13.5h3.5"/></svg>
+              <span>Reading level</span><i class="hi-val" id="hambLevelVal">B1</i>
+            </button>
+            <div class="lv-box hidden" id="lvBox">
+              <button class="lv-opt" data-level="A1">A1</button>
+              <button class="lv-opt" data-level="A2">A2</button>
+              <button class="lv-opt sel" data-level="B1">B1</button>
+              <button class="lv-opt" data-level="B2">B2</button>
+              <button class="lv-opt" data-level="C1">C1</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -87,8 +118,8 @@
         </div>
       </div>
 
-      <button class="review-card">
-        <span>Review words</span><span class="due">12 due →</span>
+      <button class="review-card" id="reviewOpen">
+        <span>Review words</span><span class="due" id="reviewDue">12 due →</span>
       </button>
 
       <p class="section-label">Your reading</p>
@@ -109,13 +140,12 @@
             <button class="menu-item" data-act="translate"><span>English translation</span><i id="miTranslate">off</i></button>
             <button class="menu-item" data-act="vowels"><span>Vowel marks</span><i id="miVowels">off</i></button>
             <button class="menu-item" data-act="speed"><span>Playback speed</span><i id="miSpeed">1.0×</i></button>
-            <button class="menu-item" data-act="theme"><span>Dark mode</span><i id="miTheme">off</i></button>
             <hr class="menu-sep">
             <button class="menu-item" data-act="home"><span>Back to library</span><i>→</i></button>
           </div>
         </div>
-        <div class="lv-stepper" title="Reading level — raise or lower it">
-          <button class="lv-arrow" id="lvDown" aria-label="Lower level">
+        <div class="lv-stepper" title="Reading level (disabled for now)" style="display:none">
+        <button class="lv-arrow" id="lvDown" aria-label="Lower level">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 4l3.5 4 3.5-4"/></svg>
           </button>
           <span class="lv-now" id="lvNow">B1</span>
@@ -126,7 +156,6 @@
       </div>
 
       <div class="reading-scroll" id="readingScroll">
-        <img class="story-hero" id="storyHero" src="assets/mouse.png" alt="">
         <h2 class="story-title fa" id="storyTitle"></h2>
         <p class="story-title-en" id="storyTitleEn"></p>
         <div class="story-body fa" id="storyBody"></div>
@@ -165,23 +194,41 @@
         </div>
         <p class="popup-translit" id="popupTranslit"></p>
         <p class="popup-gloss" id="popupGloss"></p>
-        <div class="popup-marks" id="popupMarks" title="Add or remove vowel marks on this word">
-          <span class="marks-label">Harakat</span>
-          <button class="mark" data-mark="َ" lang="fa">َ<span>zabar</span></button>
-          <button class="mark" data-mark="ُ" lang="fa">ُ<span>pesh</span></button>
-          <button class="mark" data-mark="ِ" lang="fa">ِ<span>zer</span></button>
-          <button class="mark" data-mark="ْ" lang="fa">ْ<span>sukun</span></button>
-          <button class="mark mark-clear" data-mark="clear">⌫<span>clear</span></button>
-        </div>
+        <p class="popup-grammar hidden" id="popupGrammar"></p>
         <div class="popup-actions">
-          <button class="popup-ghost">Grammar</button>
+          <button class="popup-ghost" id="popupGrammarBtn">Grammar</button>
           <button class="popup-save" id="popupSave">Save to Words</button>
         </div>
       </div>
     </div>
   </section>
 
+  <!-- ════════════ 5 · REVIEW (saved-word cards) ════════════ -->
+  <section class="screen" id="scr-review">
+    <div class="review-top">
+      <button class="menu-btn" data-nav="scr-home" title="Back">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4l-6 6 6 6"/></svg>
+      </button>
+      <p class="review-heading">Your saved words</p>
+      <span class="review-count" id="reviewCount">0</span>
+    </div>
+    <div class="card-deck" id="cardDeck"></div>
+    <p class="deck-hint" id="deckHint">swipe up · next card</p>
+  </section>
+
 </div>
-<script src="app.js?v=12"></script>
+
+<!-- exit confirmation overlay (shown on back-press from the library) -->
+<div class="exit-backdrop hidden" id="exitBackdrop">
+  <div class="exit-card">
+    <p class="exit-q">Are you sure you want to leave the app?</p>
+    <div class="exit-btns">
+      <button class="btn-primary exit-no" id="exitNo">Stay</button>
+      <button class="exit-yes" id="exitYes">Exit</button>
+    </div>
+  </div>
+</div>
+<script src="api.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
